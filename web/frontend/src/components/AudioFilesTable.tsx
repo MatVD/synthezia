@@ -727,12 +727,9 @@ export const AudioFilesTable = memo(function AudioFilesTable({
 				cell: ({ row }) => {
 					const file = row.original;
 					return (
-						<button
-							onClick={() => handleAudioClick(file.id)}
-							className="text-gray-900 dark:text-gray-50 font-medium hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer text-left"
-						>
+						<span className="text-gray-900 dark:text-gray-50 font-medium">
 							{file.title || getFileName(file.audio_path)}
-						</button>
+						</span>
 					);
 				},
 				enableGlobalFilter: false,
@@ -907,7 +904,7 @@ export const AudioFilesTable = memo(function AudioFilesTable({
 				enableGlobalFilter: false,
 			},
 		],
-		[openPopovers, queuePositions, trackProgress, getStatusIcon, handleAudioClick, handleTranscribe, handleTranscribeD, canTranscribe, getFileName, killingJobs, setSelectedFile, setStopDialogOpen, setDeleteDialogOpen]
+		[openPopovers, getStatusIcon, handleTranscribe, handleTranscribeD, canTranscribe, getFileName, formatDate, navigate, killingJobs, setSelectedFile, setStopDialogOpen, setDeleteDialogOpen]
 	);
 
 	// Create the table instance with server-side pagination and search
@@ -1031,11 +1028,19 @@ export const AudioFilesTable = memo(function AudioFilesTable({
 										table.getRowModel().rows.map((row) => (
 											<TableRow
 												key={row.id}
-												className="hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-200 border-b border-gray-100 dark:border-gray-700 last:border-b-0"
+												onClick={(e) => {
+													// Ne pas déclencher le clic si on clique sur le bouton Actions
+													if ((e.target as HTMLElement).closest('[data-actions-cell]')) {
+														return;
+													}
+													handleAudioClick(row.original.id);
+												}}
+												className="hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-200 border-b border-gray-100 dark:border-gray-700 last:border-b-0 cursor-pointer"
 											>
 												{row.getVisibleCells().map((cell) => (
 													<TableCell
 														key={cell.id}
+														{...(cell.column.id === 'actions' ? { 'data-actions-cell': true } : {})}
 														className={`
 															${cell.column.id === 'created_at' ? 'hidden sm:table-cell' : ''}
 															${cell.column.id === 'title' ? 'whitespace-normal break-words pr-1 sm:pr-2' : ''}
