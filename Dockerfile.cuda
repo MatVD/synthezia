@@ -51,6 +51,7 @@ ENV PYTHONUNBUFFERED=1 \
     UPLOAD_DIR=/app/data/uploads \
     PUID=1000 \
     PGID=1000 \
+    UV_HTTP_TIMEOUT=300 \
     NVIDIA_VISIBLE_DEVICES=all \
     NVIDIA_DRIVER_CAPABILITIES=compute,utility
 
