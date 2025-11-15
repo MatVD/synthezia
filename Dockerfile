@@ -50,7 +50,8 @@ ENV PYTHONUNBUFFERED=1 \
     DATABASE_PATH=/app/data/scriberr.db \
     UPLOAD_DIR=/app/data/uploads \
     PUID=1000 \
-    PGID=1000
+    PGID=1000 \
+    UV_HTTP_TIMEOUT=300
 
 WORKDIR /app
 

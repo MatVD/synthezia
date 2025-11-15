@@ -8,7 +8,9 @@ PGID=${PGID:-1000}
 echo "=== Scriberr Container Setup ==="
 echo "Requested UID: $PUID, GID: $PGID"
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/lib/x86_64-linux-gnu/
+export UV_HTTP_TIMEOUT=${UV_HTTP_TIMEOUT:-300}
 echo "LD_LIBRARY_PATH is: $LD_LIBRARY_PATH"
+echo "UV_HTTP_TIMEOUT is: $UV_HTTP_TIMEOUT seconds"
 
 # Function to setup user if needed
 setup_user() {
