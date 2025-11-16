@@ -12,6 +12,7 @@ import { ThemeSwitcher } from "./ThemeSwitcher";
 import { AudioRecorder } from "./AudioRecorder";
 import { QuickTranscriptionDialog } from "./QuickTranscriptionDialog";
 import { YouTubeDownloadDialog } from "./YouTubeDownloadDialog";
+import { LiveTranscriptionDialog } from "./LiveTranscriptionDialog";
 import { useRouter } from "../contexts/RouterContext";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -34,6 +35,7 @@ export function Header({ onFileSelect, onMultiTrackClick, onDownloadComplete }: 
 	const [isRecorderOpen, setIsRecorderOpen] = useState(false);
 	const [isQuickTranscriptionOpen, setIsQuickTranscriptionOpen] = useState(false);
 	const [isYouTubeDialogOpen, setIsYouTubeDialogOpen] = useState(false);
+	const [isLiveTranscriptionOpen, setIsLiveTranscriptionOpen] = useState(false);
 
 	const handleUploadClick = () => {
 		fileInputRef.current?.click();
@@ -53,6 +55,10 @@ export function Header({ onFileSelect, onMultiTrackClick, onDownloadComplete }: 
 
 	const handleYouTubeClick = () => {
 		setIsYouTubeDialogOpen(true);
+	};
+
+	const handleLiveTranscriptionClick = () => {
+		setIsLiveTranscriptionOpen(true);
 	};
 
 	const handleMultiTrackClick = () => {
@@ -111,9 +117,20 @@ export function Header({ onFileSelect, onMultiTrackClick, onDownloadComplete }: 
 				{/* Left side - Logo navigates home */}
 				<ScriberrLogo onClick={handleHomeClick} />
 
+
 				{/* Right side - Plus (Add Audio), Grip Menu, Theme Switcher */}
 				<div className="flex items-center gap-2 sm:gap-3">
 					{/* Add Audio (icon-only) */}
+					{/* Direct access to Audio live recording button */}
+					<Button
+						variant="default"
+						size="sm"
+						className="bg-red-500 hover:bg-red-600 text-white h-9 w-auto px-3 sm:h-10 cursor-pointer"
+						onClick={handleLiveTranscriptionClick}
+					>
+						<Mic className="h-4 w-4 mr-2" />
+						<span>Record audio</span>
+					</Button>
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
 							<Button
@@ -275,6 +292,13 @@ export function Header({ onFileSelect, onMultiTrackClick, onDownloadComplete }: 
 				isOpen={isYouTubeDialogOpen}
 				onClose={() => setIsYouTubeDialogOpen(false)}
 				onDownloadComplete={onDownloadComplete}
+			/>
+
+			{/* Live Transcription Dialog */}
+			<LiveTranscriptionDialog
+				isOpen={isLiveTranscriptionOpen}
+				onClose={() => setIsLiveTranscriptionOpen(false)}
+				onSessionComplete={onDownloadComplete}
 			/>
 
 		</header>

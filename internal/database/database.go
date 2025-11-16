@@ -74,6 +74,8 @@ func Initialize(dbPath string) error {
 		&models.Summary{},
 		&models.Note{},
 		&models.RefreshToken{},
+		&models.LiveTranscriptionSession{},
+		&models.LiveTranscriptionChunk{},
 	); err != nil {
 		return fmt.Errorf("failed to auto migrate: %v", err)
 	}

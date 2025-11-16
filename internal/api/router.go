@@ -16,13 +16,13 @@ func SetupRoutes(handler *Handler, authService *auth.AuthService) *gin.Engine {
 	// Suppress all GIN debug output
 	gin.SetMode(gin.ReleaseMode)
 	logger.SetGinOutput()
-	
+
 	// Create Gin router without default middleware
 	router := gin.New()
-	
+
 	// Add recovery middleware
 	router.Use(gin.Recovery())
-	
+
 	// Add custom logger middleware
 	router.Use(logger.GinLogger())
 
@@ -94,7 +94,7 @@ func SetupRoutes(handler *Handler, authService *auth.AuthService) *gin.Engine {
 				uploadRoutes.POST("/upload-multitrack", handler.UploadMultiTrack)
 				uploadRoutes.GET("/:id/audio", handler.GetAudioFile) // Audio streaming shouldn't be compressed
 			}
-			
+
 			// Regular API routes with compression
 			transcription.POST("/youtube", handler.DownloadFromYouTube)
 			transcription.POST("/submit", handler.SubmitJob)
@@ -122,6 +122,21 @@ func SetupRoutes(handler *Handler, authService *auth.AuthService) *gin.Engine {
 			// Quick transcription endpoints
 			transcription.POST("/quick", handler.SubmitQuickTranscription)
 			transcription.GET("/quick/:id", handler.GetQuickTranscriptionStatus)
+
+			// Live transcription endpoints
+			liveRoutes := transcription.Group("/live")
+			{
+				liveRoutes.POST("/sessions", handler.CreateLiveSession)
+				liveRoutes.GET("/sessions/:session_id", handler.GetLiveSession)
+				streamRoutes := liveRoutes.Group("")
+				streamRoutes.Use(middleware.NoCompressionMiddleware())
+				{
+					streamRoutes.POST("/sessions/:session_id/chunks", handler.UploadLiveChunk)
+					streamRoutes.GET("/sessions/:session_id/stream", handler.StreamLiveSession)
+				}
+				liveRoutes.POST("/sessions/:session_id/finalize", handler.FinalizeLiveSession)
+				liveRoutes.POST("/sessions/:session_id/cancel", handler.CancelLiveSession)
+			}
 		}
 
 		// Profile routes (require authentication)

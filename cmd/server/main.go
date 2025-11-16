@@ -18,7 +18,7 @@ import (
 	"scriberr/internal/transcription"
 	"scriberr/pkg/logger"
 
-	_ "scriberr/api-docs" // Import generated Swagger docs
+	_ "scriberr/api-docs"                        // Import generated Swagger docs
 	_ "scriberr/internal/transcription/adapters" // Import adapters for auto-registration
 )
 
@@ -68,7 +68,7 @@ func main() {
 	// Initialize structured logging first
 	logger.Init(os.Getenv("LOG_LEVEL"))
 	logger.Info("Starting Scriberr", "version", version)
-	
+
 	// Load configuration
 	logger.Startup("config", "Loading configuration")
 	cfg := config.Load()
@@ -88,7 +88,7 @@ func main() {
 	// Initialize unified transcription processor
 	logger.Startup("transcription", "Initializing transcription service")
 	unifiedProcessor := transcription.NewUnifiedJobProcessor()
-	
+
 	// Bootstrap embedded Python environment (for all adapters)
 	logger.Startup("python", "Preparing Python environment")
 	if err := unifiedProcessor.InitEmbeddedPythonEnv(); err != nil {
@@ -104,6 +104,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Initialize live transcription service
+	logger.Startup("live-transcription", "Initializing live transcription service")
+	liveTranscriptionService, err := transcription.NewLiveTranscriptionService(cfg, unifiedProcessor.GetUnifiedService())
+	if err != nil {
+		logger.Error("Failed to initialize live transcription service", "error", err)
+		os.Exit(1)
+	}
+
 	// Initialize task queue
 	logger.Startup("queue", "Starting background processing")
 	taskQueue := queue.NewTaskQueue(2, unifiedProcessor) // 2 workers
@@ -111,7 +119,7 @@ func main() {
 	defer taskQueue.Stop()
 
 	// Initialize API handlers
-	handler := api.NewHandler(cfg, authService, taskQueue, unifiedProcessor, quickTranscriptionService)
+	handler := api.NewHandler(cfg, authService, taskQueue, unifiedProcessor, liveTranscriptionService, quickTranscriptionService)
 
 	// Set up router
 	router := api.SetupRoutes(handler, authService)
@@ -130,10 +138,10 @@ func main() {
 			os.Exit(1)
 		}
 	}()
-	
+
 	// Give the server a moment to start
 	time.Sleep(100 * time.Millisecond)
-	logger.Info("Scriberr is ready", 
+	logger.Info("Scriberr is ready",
 		"url", fmt.Sprintf("http://%s:%s", cfg.Host, cfg.Port))
 	logger.Debug("API documentation available at /swagger/index.html")
 

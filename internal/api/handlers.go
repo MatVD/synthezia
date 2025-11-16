@@ -36,17 +36,19 @@ type Handler struct {
 	authService         *auth.AuthService
 	taskQueue           *queue.TaskQueue
 	unifiedProcessor    *transcription.UnifiedJobProcessor
+	liveTranscription   *transcription.LiveTranscriptionService
 	quickTranscription  *transcription.QuickTranscriptionService
 	multiTrackProcessor *processing.MultiTrackProcessor
 }
 
 // NewHandler creates a new handler
-func NewHandler(cfg *config.Config, authService *auth.AuthService, taskQueue *queue.TaskQueue, unifiedProcessor *transcription.UnifiedJobProcessor, quickTranscription *transcription.QuickTranscriptionService) *Handler {
+func NewHandler(cfg *config.Config, authService *auth.AuthService, taskQueue *queue.TaskQueue, unifiedProcessor *transcription.UnifiedJobProcessor, liveTranscription *transcription.LiveTranscriptionService, quickTranscription *transcription.QuickTranscriptionService) *Handler {
 	return &Handler{
 		config:              cfg,
 		authService:         authService,
 		taskQueue:           taskQueue,
 		unifiedProcessor:    unifiedProcessor,
+		liveTranscription:   liveTranscription,
 		quickTranscription:  quickTranscription,
 		multiTrackProcessor: processing.NewMultiTrackProcessor(),
 	}

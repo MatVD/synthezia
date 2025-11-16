@@ -1,3 +1,5 @@
+/* eslint-disable react-refresh/only-export-components */
+/* eslint-disable no-useless-escape */
 import { createContext, useContext, useEffect, useState } from 'react'
 
 export type Route = {

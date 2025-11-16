@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"scriberr/internal/database"
@@ -17,17 +18,19 @@ import (
 	"scriberr/internal/transcription/pipeline"
 	"scriberr/internal/transcription/registry"
 	"scriberr/pkg/logger"
+
+	"github.com/google/uuid"
 )
 
 // UnifiedTranscriptionService provides a unified interface for all transcription and diarization models
 type UnifiedTranscriptionService struct {
-	registry          *registry.ModelRegistry
-	pipeline          *pipeline.ProcessingPipeline
-	preprocessors     map[string]interfaces.Preprocessor
-	postprocessors    map[string]interfaces.Postprocessor
-	tempDirectory     string
-	outputDirectory   string
-	defaultModelIDs   map[string]string // Default model IDs for each task type
+	registry              *registry.ModelRegistry
+	pipeline              *pipeline.ProcessingPipeline
+	preprocessors         map[string]interfaces.Preprocessor
+	postprocessors        map[string]interfaces.Postprocessor
+	tempDirectory         string
+	outputDirectory       string
+	defaultModelIDs       map[string]string      // Default model IDs for each task type
 	multiTrackTranscriber *MultiTrackTranscriber // For termination support
 }
 
@@ -111,14 +114,14 @@ func (u *UnifiedTranscriptionService) ProcessJob(ctx context.Context, jobID stri
 		if err := u.processMultiTrackJob(ctx, &job); err != nil {
 			errMsg := fmt.Sprintf("multi-track processing failed: %v", err)
 			updateExecutionStatus(models.StatusFailed, errMsg)
-			return fmt.Errorf(errMsg)
+			return fmt.Errorf("%s", errMsg)
 		}
 	} else {
 		// Process single track
 		if err := u.processSingleTrackJob(ctx, &job); err != nil {
 			errMsg := fmt.Sprintf("single-track processing failed: %v", err)
 			updateExecutionStatus(models.StatusFailed, errMsg)
-			return fmt.Errorf(errMsg)
+			return fmt.Errorf("%s", errMsg)
 		}
 	}
 
@@ -151,17 +154,63 @@ func (u *UnifiedTranscriptionService) processSingleTrackJob(ctx context.Context,
 		return fmt.Errorf("failed to create audio input: %w", err)
 	}
 
-	// Determine models to use first
-	transcriptionModelID, diarizationModelID, err := u.selectModels(job.Parameters)
+	transcriptResult, err := u.transcribeAudioInput(ctx, audioInput, job.Parameters, procCtx)
 	if err != nil {
-		return fmt.Errorf("failed to select models: %w", err)
+		return err
 	}
 
-	// Apply preprocessing to ensure audio is in correct format (mono 16kHz)
-	var preprocessedInput interfaces.AudioInput
+	if transcriptResult != nil {
+		if err := u.saveTranscriptionResults(job.ID, transcriptResult); err != nil {
+			return fmt.Errorf("failed to save transcription results: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// TranscribeFile runs the unified pipeline against an arbitrary audio file and returns the transcript
+func (u *UnifiedTranscriptionService) TranscribeFile(ctx context.Context, audioPath string, params models.WhisperXParams) (*interfaces.TranscriptResult, error) {
+	jobID := fmt.Sprintf("live-%s", uuid.New().String())
+	procCtx := interfaces.ProcessingContext{
+		JobID:           jobID,
+		OutputDirectory: filepath.Join(u.outputDirectory, "live", jobID),
+		TempDirectory:   u.tempDirectory,
+		Metadata: map[string]string{
+			"source": "live-session",
+		},
+	}
+
+	if err := os.MkdirAll(procCtx.OutputDirectory, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create live output directory: %w", err)
+	}
+
+	audioInput, err := u.createAudioInput(audioPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create audio input: %w", err)
+	}
+
+	result, err := u.transcribeAudioInput(ctx, audioInput, params, procCtx)
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+// transcribeAudioInput centralizes preprocessing, adapter invocation, and optional diarization merging.
+func (u *UnifiedTranscriptionService) transcribeAudioInput(ctx context.Context, audioInput interfaces.AudioInput, params models.WhisperXParams, procCtx interfaces.ProcessingContext) (*interfaces.TranscriptResult, error) {
+	transcriptionModelID, diarizationModelID, err := u.selectModels(params)
+	if err != nil {
+		return nil, fmt.Errorf("failed to select models: %w", err)
+	}
+
+	if transcriptionModelID == "" && (!params.Diarize || diarizationModelID == "") {
+		return nil, fmt.Errorf("no transcription model selected")
+	}
+
 	var tempFilesToCleanup []string
 
-	// Get model capabilities for preprocessing decisions
+	// Determine preprocessing target capabilities
 	var capabilities interfaces.ModelCapabilities
 	if transcriptionModelID != "" {
 		if adapter, err := u.registry.GetTranscriptionAdapter(transcriptionModelID); err == nil {
@@ -173,26 +222,21 @@ func (u *UnifiedTranscriptionService) processSingleTrackJob(ctx context.Context,
 		}
 	}
 
-	// Apply preprocessing
-	preprocessedInput, err = u.pipeline.ProcessAudio(ctx, audioInput, capabilities)
+	preprocessedInput, err := u.pipeline.ProcessAudio(ctx, audioInput, capabilities)
 	if err != nil {
 		logger.Warn("Audio preprocessing failed, using original", "error", err)
 		preprocessedInput = audioInput
-	} else {
-		// Track temporary file for cleanup if preprocessing created one
-		if preprocessedInput.TempFilePath != "" && preprocessedInput.TempFilePath != audioInput.FilePath {
-			tempFilesToCleanup = append(tempFilesToCleanup, preprocessedInput.TempFilePath)
-			logger.Info("Audio preprocessing completed", 
-				"original", audioInput.FilePath,
-				"converted", preprocessedInput.TempFilePath,
-				"original_sr", audioInput.SampleRate,
-				"converted_sr", preprocessedInput.SampleRate,
-				"original_channels", audioInput.Channels,
-				"converted_channels", preprocessedInput.Channels)
-		}
+	} else if preprocessedInput.TempFilePath != "" && preprocessedInput.TempFilePath != audioInput.FilePath {
+		tempFilesToCleanup = append(tempFilesToCleanup, preprocessedInput.TempFilePath)
+		logger.Info("Audio preprocessing completed",
+			"original", audioInput.FilePath,
+			"converted", preprocessedInput.TempFilePath,
+			"original_sr", audioInput.SampleRate,
+			"converted_sr", preprocessedInput.SampleRate,
+			"original_channels", audioInput.Channels,
+			"converted_channels", preprocessedInput.Channels)
 	}
 
-	// Ensure cleanup of temporary files when function exits
 	defer func() {
 		for _, tempFile := range tempFilesToCleanup {
 			if err := os.Remove(tempFile); err != nil {
@@ -206,56 +250,41 @@ func (u *UnifiedTranscriptionService) processSingleTrackJob(ctx context.Context,
 	var transcriptResult *interfaces.TranscriptResult
 	var diarizationResult *interfaces.DiarizationResult
 
-	// Perform transcription using the preprocessed audio
 	if transcriptionModelID != "" {
-		logger.Info("Running transcription", "model_id", transcriptionModelID)
+		logger.Info("Running transcription", "model_id", transcriptionModelID, "job_id", procCtx.JobID)
 		transcriptionAdapter, err := u.registry.GetTranscriptionAdapter(transcriptionModelID)
 		if err != nil {
-			return fmt.Errorf("failed to get transcription adapter: %w", err)
+			return nil, fmt.Errorf("failed to get transcription adapter: %w", err)
 		}
 
-		// Convert parameters for this specific model
-		params := u.convertParametersForModel(job.Parameters, transcriptionModelID)
-
-		transcriptResult, err = transcriptionAdapter.Transcribe(ctx, preprocessedInput, params, procCtx)
+		paramsForModel := u.convertParametersForModel(params, transcriptionModelID)
+		transcriptResult, err = transcriptionAdapter.Transcribe(ctx, preprocessedInput, paramsForModel, procCtx)
 		if err != nil {
-			return fmt.Errorf("transcription failed: %w", err)
+			return nil, fmt.Errorf("transcription failed: %w", err)
 		}
 	}
 
-	// Perform diarization if requested and not already done by transcription
-	if job.Parameters.Diarize && diarizationModelID != "" {
-		// Convert parameters for diarization model
-		diarizationParams := u.convertParametersForModel(job.Parameters, diarizationModelID)
-		
+	if params.Diarize && diarizationModelID != "" {
+		diarizationParams := u.convertParametersForModel(params, diarizationModelID)
 		if !u.transcriptionIncludesDiarization(transcriptionModelID, diarizationParams) {
-			logger.Info("Running separate diarization", "model_id", diarizationModelID)
+			logger.Info("Running separate diarization", "model_id", diarizationModelID, "job_id", procCtx.JobID)
 			diarizationAdapter, err := u.registry.GetDiarizationAdapter(diarizationModelID)
 			if err != nil {
-				return fmt.Errorf("failed to get diarization adapter: %w", err)
+				return nil, fmt.Errorf("failed to get diarization adapter: %w", err)
 			}
 
-			// Use the same preprocessed audio for diarization
 			diarizationResult, err = diarizationAdapter.Diarize(ctx, preprocessedInput, diarizationParams, procCtx)
 			if err != nil {
-				return fmt.Errorf("diarization failed: %w", err)
+				return nil, fmt.Errorf("diarization failed: %w", err)
 			}
 
-			// Merge diarization results with transcription
 			if transcriptResult != nil && diarizationResult != nil {
 				transcriptResult = u.mergeDiarizationWithTranscription(transcriptResult, diarizationResult)
 			}
 		}
 	}
 
-	// Save results to database
-	if transcriptResult != nil {
-		if err := u.saveTranscriptionResults(job.ID, transcriptResult); err != nil {
-			return fmt.Errorf("failed to save transcription results: %w", err)
-		}
-	}
-
-	return nil
+	return transcriptResult, nil
 }
 
 // processMultiTrackJob handles multi-track audio processing
@@ -266,11 +295,11 @@ func (u *UnifiedTranscriptionService) processMultiTrackJob(ctx context.Context, 
 	unifiedProcessor := &UnifiedJobProcessor{
 		unifiedService: u,
 	}
-	
+
 	// Create multi-track transcriber with unified processor and store reference for termination
 	transcriber := NewMultiTrackTranscriber(unifiedProcessor)
 	u.multiTrackTranscriber = transcriber
-	
+
 	// Process the multi-track transcription
 	return transcriber.ProcessMultiTrackTranscription(ctx, job.ID)
 }
@@ -318,8 +347,8 @@ func (u *UnifiedTranscriptionService) selectModels(params models.WhisperXParams)
 		}
 	}
 
-	logger.Info("Selected models", 
-		"transcription", transcriptionModelID, 
+	logger.Info("Selected models",
+		"transcription", transcriptionModelID,
 		"diarization", diarizationModelID,
 		"original_family", params.ModelFamily,
 		"original_diarize_model", params.DiarizeModel)
@@ -339,19 +368,19 @@ func (u *UnifiedTranscriptionService) transcriptionIncludesDiarization(modelID s
 			return true
 		}
 	}
-	
+
 	return false
 }
 
 // ffprobeOutput represents the JSON output from ffprobe
 type ffprobeOutput struct {
 	Streams []struct {
-		CodecType    string `json:"codec_type"`
-		SampleRate   string `json:"sample_rate"`
-		Channels     int    `json:"channels"`
-		Duration     string `json:"duration"`
-		CodecName    string `json:"codec_name"`
-		BitRate      string `json:"bit_rate"`
+		CodecType  string `json:"codec_type"`
+		SampleRate string `json:"sample_rate"`
+		Channels   int    `json:"channels"`
+		Duration   string `json:"duration"`
+		CodecName  string `json:"codec_name"`
+		BitRate    string `json:"bit_rate"`
 	} `json:"streams"`
 	Format struct {
 		Duration string `json:"duration"`
@@ -380,13 +409,13 @@ func (u *UnifiedTranscriptionService) createAudioInput(audioPath string) (interf
 	}
 
 	// Run ffprobe to get audio metadata
-	cmd := exec.Command("ffprobe", 
+	cmd := exec.Command("ffprobe",
 		"-v", "quiet",
 		"-print_format", "json",
 		"-show_format",
 		"-show_streams",
 		audioPath)
-	
+
 	output, err := cmd.Output()
 	if err != nil {
 		logger.Warn("Failed to run ffprobe, using defaults", "error", err, "file", audioPath)
@@ -438,7 +467,7 @@ func (u *UnifiedTranscriptionService) createAudioInput(audioPath string) (interf
 			if stream.BitRate != "" {
 				audioInput.Metadata["bitrate"] = stream.BitRate
 			}
-			
+
 			break
 		}
 	}
@@ -451,7 +480,7 @@ func (u *UnifiedTranscriptionService) createAudioInput(audioPath string) (interf
 		audioInput.Channels = 1
 	}
 
-	logger.Info("Audio metadata extracted", 
+	logger.Info("Audio metadata extracted",
 		"file", audioPath,
 		"sample_rate", audioInput.SampleRate,
 		"channels", audioInput.Channels,
@@ -484,10 +513,10 @@ func (u *UnifiedTranscriptionService) convertParametersForModel(params models.Wh
 // convertToParakeetParams converts to Parakeet-specific parameters
 func (u *UnifiedTranscriptionService) convertToParakeetParams(params models.WhisperXParams) map[string]interface{} {
 	return map[string]interface{}{
-		"timestamps":     true,
-		"context_left":   params.AttentionContextLeft,
-		"context_right":  params.AttentionContextRight,
-		"output_format":  "json",
+		"timestamps":         true,
+		"context_left":       params.AttentionContextLeft,
+		"context_right":      params.AttentionContextRight,
+		"output_format":      "json",
 		"auto_convert_audio": true,
 	}
 }
@@ -495,58 +524,59 @@ func (u *UnifiedTranscriptionService) convertToParakeetParams(params models.Whis
 // convertToCanaryParams converts to Canary-specific parameters
 func (u *UnifiedTranscriptionService) convertToCanaryParams(params models.WhisperXParams) map[string]interface{} {
 	paramMap := map[string]interface{}{
-		"timestamps":     true,
-		"output_format":  "json",
+		"timestamps":         true,
+		"output_format":      "json",
 		"auto_convert_audio": true,
-		"task":           params.Task,
+		"task":               params.Task,
 	}
-	
+
 	// Set source language
 	if params.Language != nil {
 		paramMap["source_lang"] = *params.Language
 	} else {
 		paramMap["source_lang"] = "en"
 	}
-	
+
 	// Set target language for translation
 	if params.Task == "translate" {
 		paramMap["target_lang"] = "en"
 	}
-	
+
 	return paramMap
 }
 
 // convertToWhisperXParams converts to WhisperX-specific parameters
 func (u *UnifiedTranscriptionService) convertToWhisperXParams(params models.WhisperXParams) map[string]interface{} {
+	device := u.resolveDevicePreference(params.Device)
 	// For WhisperX, we use the standard WhisperX parameters (no NVIDIA-specific ones)
 	paramMap := map[string]interface{}{
 		// Core parameters
-		"model":         params.Model,
-		"device":        params.Device,
-		"device_index":  params.DeviceIndex,
-		"batch_size":    params.BatchSize,
-		"compute_type":  params.ComputeType,
-		"threads":       params.Threads,
-		
+		"model":        params.Model,
+		"device":       device,
+		"device_index": params.DeviceIndex,
+		"batch_size":   params.BatchSize,
+		"compute_type": params.ComputeType,
+		"threads":      params.Threads,
+
 		// Task and language
-		"task":          params.Task,
-		
+		"task": params.Task,
+
 		// Diarization
 		"diarize":       params.Diarize,
 		"diarize_model": params.DiarizeModel,
-		
+
 		// Quality settings
-		"temperature":    params.Temperature,
-		"best_of":        params.BestOf,
-		"beam_size":      params.BeamSize,
-		"patience":       params.Patience,
-		
+		"temperature": params.Temperature,
+		"best_of":     params.BestOf,
+		"beam_size":   params.BeamSize,
+		"patience":    params.Patience,
+
 		// VAD settings
-		"vad_method":     params.VadMethod,
-		"vad_onset":      params.VadOnset,
-		"vad_offset":     params.VadOffset,
+		"vad_method": params.VadMethod,
+		"vad_onset":  params.VadOnset,
+		"vad_offset": params.VadOffset,
 	}
-	
+
 	// Handle pointer fields - only add if not nil
 	if params.Language != nil {
 		paramMap["language"] = *params.Language
@@ -572,17 +602,57 @@ func (u *UnifiedTranscriptionService) convertToWhisperXParams(params models.Whis
 	if params.InitialPrompt != nil {
 		paramMap["initial_prompt"] = *params.InitialPrompt
 	}
-	
+
 	return paramMap
+}
+
+// resolveDevicePreference maps "auto" to a concrete device supported by adapters.
+func (u *UnifiedTranscriptionService) resolveDevicePreference(preferred string) string {
+	switch strings.ToLower(preferred) {
+	case "", "auto":
+		if cudaAvailable() {
+			return "cuda"
+		}
+		return "cpu"
+	case "cuda", "cpu":
+		return preferred
+	default:
+		// WhisperX only supports cpu/cuda today; fall back safely.
+		if cudaAvailable() {
+			return "cuda"
+		}
+		return "cpu"
+	}
+}
+
+var detectedCuda struct {
+	once      sync.Once
+	available bool
+}
+
+func cudaAvailable() bool {
+	detectedCuda.once.Do(func() {
+		if _, err := exec.LookPath("nvidia-smi"); err == nil {
+			detectedCuda.available = true
+			return
+		}
+		if _, err := os.Stat("/dev/nvidia0"); err == nil {
+			detectedCuda.available = true
+			return
+		}
+		// Default: assume not available on this host.
+		detectedCuda.available = false
+	})
+	return detectedCuda.available
 }
 
 // convertToPyannoteParams converts to PyAnnote-specific parameters
 func (u *UnifiedTranscriptionService) convertToPyannoteParams(params models.WhisperXParams) map[string]interface{} {
 	paramMap := map[string]interface{}{
-		"output_format": "json",
+		"output_format":      "json",
 		"auto_convert_audio": true,
 	}
-	
+
 	if params.MinSpeakers != nil {
 		paramMap["min_speakers"] = *params.MinSpeakers
 	}
@@ -592,14 +662,14 @@ func (u *UnifiedTranscriptionService) convertToPyannoteParams(params models.Whis
 	if params.HfToken != nil {
 		paramMap["hf_token"] = *params.HfToken
 	}
-	
+
 	return paramMap
 }
 
 // convertToSortformerParams converts to Sortformer-specific parameters
 func (u *UnifiedTranscriptionService) convertToSortformerParams(params models.WhisperXParams) map[string]interface{} {
 	return map[string]interface{}{
-		"output_format": "json",
+		"output_format":      "json",
 		"auto_convert_audio": true,
 		// Sortformer is optimized for 4 speakers, no additional config needed
 	}
@@ -608,21 +678,21 @@ func (u *UnifiedTranscriptionService) convertToSortformerParams(params models.Wh
 func (u *UnifiedTranscriptionService) parametersToMap(params models.WhisperXParams) map[string]interface{} {
 	paramMap := map[string]interface{}{
 		// Core parameters
-		"model":         params.Model,
-		"device":        params.Device,
-		"device_index":  params.DeviceIndex,
-		"batch_size":    params.BatchSize,
-		"compute_type":  params.ComputeType,
-		"threads":       params.Threads,
-		
+		"model":        params.Model,
+		"device":       params.Device,
+		"device_index": params.DeviceIndex,
+		"batch_size":   params.BatchSize,
+		"compute_type": params.ComputeType,
+		"threads":      params.Threads,
+
 		// Language and task
-		"task":          params.Task,
-		
+		"task": params.Task,
+
 		// Diarization
 		"diarize":       params.Diarize,
 		"diarize_model": params.DiarizeModel,
 	}
-	
+
 	// Handle pointer fields - only add if not nil
 	if params.Language != nil {
 		paramMap["language"] = *params.Language
@@ -648,7 +718,7 @@ func (u *UnifiedTranscriptionService) parametersToMap(params models.WhisperXPara
 	if params.InitialPrompt != nil {
 		paramMap["initial_prompt"] = *params.InitialPrompt
 	}
-	
+
 	// Add remaining non-pointer fields
 	paramMap["temperature"] = params.Temperature
 	paramMap["best_of"] = params.BestOf
@@ -670,7 +740,7 @@ func (u *UnifiedTranscriptionService) parametersToMap(params models.WhisperXPara
 		} else {
 			paramMap["source_lang"] = "en"
 		}
-		
+
 		if params.Task == "translate" {
 			paramMap["target_lang"] = "en" // Default target for translation
 		} else {
@@ -683,7 +753,7 @@ func (u *UnifiedTranscriptionService) parametersToMap(params models.WhisperXPara
 
 // mergeDiarizationWithTranscription combines diarization results with transcription
 func (u *UnifiedTranscriptionService) mergeDiarizationWithTranscription(transcript *interfaces.TranscriptResult, diarization *interfaces.DiarizationResult) *interfaces.TranscriptResult {
-	logger.Info("Merging diarization with transcription", 
+	logger.Info("Merging diarization with transcription",
 		"transcript_segments", len(transcript.Segments),
 		"diarization_segments", len(diarization.Segments))
 

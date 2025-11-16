@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useRef, memo, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeft, Play, Pause, List, AlignLeft, MessageCircle, Download, FileText, FileJson, FileImage, Check, StickyNote, Plus, X, Sparkles, Pencil, ChevronUp, ChevronRight, Info, Clock, Settings, Users, Loader2, Copy } from "lucide-react";
@@ -264,15 +265,19 @@ export const AudioDetailView = memo(function AudioDetailView({ audioId }: AudioD
             const key = `scriberr.audioCollapsed.${audioId}`;
             const saved = localStorage.getItem(key);
             if (saved !== null) setAudioCollapsed(saved === '1');
-        } catch {}
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+        } catch { 
+            // Ignore localStorage errors
+        }
+        
     }, [audioId]);
 
     useEffect(() => {
         try {
             const key = `scriberr.audioCollapsed.${audioId}`;
             localStorage.setItem(key, audioCollapsed ? '1' : '0');
-        } catch {}
+        } catch {
+            // Ignore localStorage errors
+        }
     }, [audioId, audioCollapsed]);
 
 useEffect(() => {
@@ -732,7 +737,6 @@ useEffect(() => {
             if (res.ok) {
                 const data = await res.json();
                 setExecutionData(data);
-            } else {
             }
         } catch (e) { 
             console.error("Failed to fetch execution data", e); 
@@ -986,7 +990,9 @@ useEffect(() => {
     const toggleAudioCollapsed = () => {
         if (!audioCollapsed && wavesurferRef.current && isPlaying) {
             // Pause when collapsing
-            try { wavesurferRef.current.pause(); } catch {}
+            try { wavesurferRef.current.pause(); } catch {
+                // Ignore errors
+            }
         }
         setAudioCollapsed(v => !v);
     };
@@ -1012,7 +1018,7 @@ useEffect(() => {
                 toast({ title: 'Failed to update title', description: msg });
             }
         } catch (e) {
-            toast({ title: 'Failed to update title' });
+            toast({ title: 'Failed to update title:' + e });
         } finally {
             setSavingTitle(false);
             setEditingTitle(false);
@@ -1030,7 +1036,9 @@ useEffect(() => {
                 setSummaryOpen(true);
                 return;
             }
-        } catch {}
+        } catch {
+            // Ignore errors and proceed to template picker
+        }
         // Else open template picker
         setSummarizeOpen(true);
         if (templates.length === 0) {
@@ -1088,7 +1096,7 @@ useEffect(() => {
                 // Refresh the existing summary after successful generation
                 await fetchExistingSummary();
             }
-        } catch (e) {
+        } catch {
             setSummaryError('Summary generation failed. Please try again.');
             toast({ title: 'Summary failed', description: 'Summary generation failed. Please try again.' });
         } finally {
@@ -2130,7 +2138,9 @@ useEffect(() => {
                                 try {
                                     await navigator.clipboard.writeText(summaryStream || '');
                                     toast({ title: 'Copied to clipboard' });
-                                } catch {}
+                                } catch {
+                                    toast({ title: 'Failed to copy' });
+                                }
                             }}
                             disabled={!summaryStream}
                         >
