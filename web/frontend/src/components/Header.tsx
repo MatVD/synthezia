@@ -6,7 +6,7 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Upload, Mic, Settings, LogOut, Home, Plus, Menu, Zap, Youtube, Video, Users, Radio } from "lucide-react";
+import { Upload, Mic, Settings, LogOut, Home, Plus, Menu, Zap, Youtube, Video, Users } from "lucide-react";
 import { ScriberrLogo } from "./ScriberrLogo";
 import { ThemeSwitcher } from "./ThemeSwitcher";
 import { AudioRecorder } from "./AudioRecorder";
@@ -117,9 +117,20 @@ export function Header({ onFileSelect, onMultiTrackClick, onDownloadComplete }: 
 				{/* Left side - Logo navigates home */}
 				<ScriberrLogo onClick={handleHomeClick} />
 
+
 				{/* Right side - Plus (Add Audio), Grip Menu, Theme Switcher */}
 				<div className="flex items-center gap-2 sm:gap-3">
 					{/* Add Audio (icon-only) */}
+					{/* Direct access to Audio live recording button */}
+					<Button
+						variant="default"
+						size="sm"
+						className="bg-red-500 hover:bg-red-600 text-white h-9 w-auto px-3 sm:h-10 cursor-pointer"
+						onClick={handleLiveTranscriptionClick}
+					>
+						<Mic className="h-4 w-4 mr-2" />
+						<span>Record audio</span>
+					</Button>
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
 							<Button
@@ -135,18 +146,6 @@ export function Header({ onFileSelect, onMultiTrackClick, onDownloadComplete }: 
 							align="end"
 							className="w-48 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 shadow-lg"
 						>
-							<DropdownMenuItem
-								onClick={handleLiveTranscriptionClick}
-								className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
-							>
-								<Radio className="h-4 w-4 text-orange-500" />
-								<div>
-									<div className="font-medium">Live Transcription</div>
-									<div className="text-xs text-gray-500 dark:text-gray-400">
-										Transcribe audio in real-time
-									</div>
-								</div>
-							</DropdownMenuItem>
 							<DropdownMenuItem
 								onClick={handleQuickTranscriptionClick}
 								className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
