@@ -48,7 +48,7 @@ func Load() *Config {
 		JWTSecret:    getJWTSecret(),
 		UploadDir:    getEnv("UPLOAD_DIR", "data/uploads"),
 		UVPath:       findUVPath(),
-		WhisperXEnv:  getEnv("WHISPERX_ENV", "data/whisperx-env"),
+		WhisperXEnv:  getEnv("WHISPERX_ENV", "whisperx-env/WhisperX"),
 	}
 }
 
