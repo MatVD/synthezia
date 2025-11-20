@@ -1,6 +1,6 @@
 services:
   synthezia:
-    image: ghcr.io/rishikanthc/synthezia:latest
+    image: jcvd/synthezia:latest
     ports:
       - "8080:8080"
     volumes:

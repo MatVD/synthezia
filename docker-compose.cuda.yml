@@ -1,7 +1,7 @@
 version: "3.9"
 services:
   synthezia:
-    image: ghcr.io/rishikanthc/synthezia:v1.0.4-cuda
+    image: jcvd/synthezia:v1.0.4-cuda
     ports:
       - "8080:8080"
     volumes:
