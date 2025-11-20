@@ -6,7 +6,7 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Upload, Mic, Settings, LogOut, Home, Plus, Menu, Zap, Youtube, Video, Users } from "lucide-react";
+import { Upload, Mic, Settings, LogOut, Home, Plus, Menu, Zap, Video, Users } from "lucide-react";
 import { SyntheziaLogo } from "./SyntheziaLogo";
 import { ThemeSwitcher } from "./ThemeSwitcher";
 import { AudioRecorder } from "./AudioRecorder";
@@ -53,9 +53,9 @@ export function Header({ onFileSelect, onMultiTrackClick, onDownloadComplete }: 
 		setIsQuickTranscriptionOpen(true);
 	};
 
-	const handleYouTubeClick = () => {
-		setIsYouTubeDialogOpen(true);
-	};
+	// const handleYouTubeClick = () => {
+	// 	setIsYouTubeDialogOpen(true);
+	// };
 
 	const handleLiveTranscriptionClick = () => {
 		setIsLiveTranscriptionOpen(true);
@@ -158,7 +158,7 @@ export function Header({ onFileSelect, onMultiTrackClick, onDownloadComplete }: 
 									</div>
 								</div>
 							</DropdownMenuItem>
-							<DropdownMenuItem
+							{/* <DropdownMenuItem
 								onClick={handleYouTubeClick}
 								className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
 							>
@@ -169,7 +169,7 @@ export function Header({ onFileSelect, onMultiTrackClick, onDownloadComplete }: 
 										Download audio from YouTube
 									</div>
 								</div>
-							</DropdownMenuItem>
+							</DropdownMenuItem> */}
 							<DropdownMenuItem
 								onClick={handleUploadClick}
 								className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
