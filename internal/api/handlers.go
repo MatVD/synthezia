@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -2705,9 +2706,14 @@ func (h *Handler) DownloadFromYouTube(c *gin.Context) {
 		req.URL,
 	)
 
+	// Capture stderr for debugging
+	var stderr bytes.Buffer
+	ytDlpCmd.Stderr = &stderr
+
 	// Execute download
 	if err := ytDlpCmd.Run(); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to download YouTube audio: %v", err)})
+		logger.Error("YouTube download failed", "error", err, "stderr", stderr.String())
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to download YouTube audio: %v. Details: %s", err, stderr.String())})
 		return
 	}
 
@@ -2725,7 +2731,7 @@ func (h *Handler) DownloadFromYouTube(c *gin.Context) {
 	job := models.TranscriptionJob{
 		ID:        jobID,
 		AudioPath: actualFilePath,
-		Status:    models.StatusUploaded,
+		Status:    models.StatusPending, // Automatically start pending
 	}
 
 	// Set title
@@ -2733,12 +2739,74 @@ func (h *Handler) DownloadFromYouTube(c *gin.Context) {
 		job.Title = &title
 	}
 
+	// Set default transcription parameters for automatic processing
+	defaultParams := models.WhisperXParams{
+		ModelFamily:                    "whisper",
+		Model:                          "small",
+		ModelCacheOnly:                 false,
+		Device:                         "cpu",
+		DeviceIndex:                    0,
+		BatchSize:                      8,
+		ComputeType:                    "float32",
+		Threads:                        0,
+		OutputFormat:                   "all",
+		Verbose:                        true,
+		Task:                           "transcribe",
+		InterpolateMethod:              "nearest",
+		NoAlign:                        false,
+		ReturnCharAlignments:           false,
+		VadMethod:                      "pyannote",
+		VadOnset:                       0.5,
+		VadOffset:                      0.363,
+		ChunkSize:                      30,
+		Diarize:                        false,
+		DiarizeModel:                   "pyannote/speaker-diarization-3.1",
+		SpeakerEmbeddings:              false,
+		Temperature:                    0,
+		BestOf:                         5,
+		BeamSize:                       5,
+		Patience:                       1.0,
+		LengthPenalty:                  1.0,
+		SuppressNumerals:               false,
+		ConditionOnPreviousText:        false,
+		Fp16:                           true,
+		TemperatureIncrementOnFallback: 0.2,
+		CompressionRatioThreshold:      2.4,
+		LogprobThreshold:               -1.0,
+		NoSpeechThreshold:              0.6,
+		HighlightWords:                 false,
+		SegmentResolution:              "sentence",
+		PrintProgress:                  false,
+		AttentionContextLeft:           256,
+		AttentionContextRight:          256,
+		IsMultiTrackEnabled:            false,
+	}
+	job.Parameters = defaultParams
+
 	// Save to database
 	if err := database.DB.Create(&job).Error; err != nil {
 		// Clean up downloaded file on database error
 		os.Remove(actualFilePath)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save transcription record"})
 		return
+	}
+
+	// Enqueue job for transcription immediately
+	if err := h.taskQueue.EnqueueJob(jobID); err != nil {
+		logger.Error("Failed to enqueue YouTube job", "job_id", jobID, "error", err)
+		// We don't fail the request, but the job will remain in pending state without being in queue
+		// User might need to manually retry or we should have a recovery mechanism
+	} else {
+		logger.Info("Automatically enqueued YouTube job", "job_id", jobID)
+		
+		// Log job started
+		params := make(map[string]any)
+		params["model"] = defaultParams.Model
+		params["model_family"] = defaultParams.ModelFamily
+		params["source"] = "youtube"
+		
+		filename := filepath.Base(job.AudioPath)
+		logger.JobStarted(jobID, filename, defaultParams.ModelFamily, params)
 	}
 
 	c.JSON(http.StatusOK, job)

@@ -89,6 +89,54 @@ else
 fi
 ((total++))
 
+# Audio Tests
+if run_test "Audio Package Tests" "./tests/audio_test.go"; then
+    ((passed++))
+else
+    ((failed++))
+fi
+((total++))
+
+# Processing Tests
+if run_test "Multi-Track Processing Tests" "./tests/test_helpers.go ./tests/processing_test.go"; then
+    ((passed++))
+else
+    ((failed++))
+fi
+((total++))
+
+# Dropzone Tests
+if run_test "Dropzone Service Tests" "./tests/test_helpers.go ./tests/dropzone_test.go"; then
+    ((passed++))
+else
+    ((failed++))
+fi
+((total++))
+
+# Logger Tests
+if run_test "Logger Package Tests" "./tests/logger_test.go"; then
+    ((passed++))
+else
+    ((failed++))
+fi
+((total++))
+
+# Config Tests
+if run_test "Config Package Tests" "./tests/config_test.go"; then
+    ((passed++))
+else
+    ((failed++))
+fi
+((total++))
+
+# Middleware Tests
+if run_test "Middleware Tests" "./tests/test_helpers.go ./tests/middleware_test.go"; then
+    ((passed++))
+else
+    ((failed++))
+fi
+((total++))
+
 # Final summary
 echo -e "\n======================================"
 echo -e "${YELLOW}📊 TEST SUMMARY${NC}"
