@@ -345,11 +345,27 @@ func (w *WhisperXAdapter) updateWhisperXDependencies(whisperxPath string) error 
 	content := string(data)
 	content = strings.ReplaceAll(content, "ctranslate2<4.5.0", "ctranslate2==4.6.0")
 
-	if !strings.Contains(content, "yt-dlp") {
-		content = strings.ReplaceAll(content,
-			`"transformers>=4.48.0",`,
-			`"transformers>=4.48.0",
-    "yt-dlp",`)
+	// Update yt-dlp to latest version if not already present or outdated
+	if !strings.Contains(content, "yt-dlp>=2024.11.18") {
+		if strings.Contains(content, `"yt-dlp"`) || strings.Contains(content, `"yt-dlp>=`) {
+			// Replace any existing yt-dlp version
+			content = strings.ReplaceAll(content, `"yt-dlp",`, `"yt-dlp>=2024.11.18",`)
+			content = strings.ReplaceAll(content, `"yt-dlp>=`, `"yt-dlp>=2024.11.18",`)
+			// Remove any trailing version after the replacement
+			lines := strings.Split(content, "\n")
+			for i, line := range lines {
+				if strings.Contains(line, `"yt-dlp>=2024.11.18"`) && strings.Count(line, `"`) > 2 {
+					lines[i] = strings.Split(line, `","`)[0] + `",`
+				}
+			}
+			content = strings.Join(lines, "\n")
+		} else {
+			// Add yt-dlp if not present
+			content = strings.ReplaceAll(content,
+				`"transformers>=4.48.0",`,
+				`"transformers>=4.48.0",
+    "yt-dlp>=2024.11.18",`)
+		}
 	}
 
 	if err := os.WriteFile(pyprojectPath, []byte(content), 0644); err != nil {

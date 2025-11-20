@@ -32,6 +32,9 @@ type Config struct {
 	// Python/WhisperX configuration
 	UVPath      string
 	WhisperXEnv string
+
+	// YouTube configuration
+	YoutubeCookiesPath string
 }
 
 // Load loads configuration from environment variables and .env file
@@ -42,13 +45,14 @@ func Load() *Config {
 	}
 
 	return &Config{
-		Port:         getEnv("PORT", "8080"),
-		Host:         getEnv("HOST", "localhost"),
-		DatabasePath: getEnv("DATABASE_PATH", "data/synthezia.db"),
-		JWTSecret:    getJWTSecret(),
-		UploadDir:    getEnv("UPLOAD_DIR", "data/uploads"),
-		UVPath:       findUVPath(),
-		WhisperXEnv:  getEnv("WHISPERX_ENV", "whisperx-env/WhisperX"),
+		Port:               getEnv("PORT", "8080"),
+		Host:               getEnv("HOST", "localhost"),
+		DatabasePath:       getEnv("DATABASE_PATH", "data/synthezia.db"),
+		JWTSecret:          getJWTSecret(),
+		UploadDir:          getEnv("UPLOAD_DIR", "data/uploads"),
+		UVPath:             findUVPath(),
+		WhisperXEnv:        getEnv("WHISPERX_ENV", "whisperx-env/WhisperX"),
+		YoutubeCookiesPath: getEnv("YOUTUBE_COOKIES_PATH", ""),
 	}
 }
 
