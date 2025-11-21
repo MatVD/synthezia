@@ -70,6 +70,16 @@ SynthezIA is a self‑hosted offline transcription app for converting audio into
 
 ## Installation
 
+### Requirements
+- OS: Linux, macOS, or Windows (WSL2 recommended)
+- CPU: Modern x86_64 CPU (Intel or AMD). ARM support is experimental.
+- RAM: Minimum 8GB (16GB+ recommended for larger models)
+- Disk: Minimum 5GB free space (more for larger models and audio files)
+- Go: Required for building from source (if not using pre-built binaries)
+- Docker: Optional, for running via Docker container
+### Pre-built binaries
+
+
 ### Clone the repo
 ```bash
 git clone https://github.com/MatVD/synthezia.git
