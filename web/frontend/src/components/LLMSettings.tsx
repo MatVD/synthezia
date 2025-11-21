@@ -64,9 +64,6 @@ export function LLMSettings() {
 		try {
 			const response = await apiClient("/api/v1/llm/config", {
 				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
 				body: JSON.stringify(payload),
 			});
 

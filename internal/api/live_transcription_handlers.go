@@ -9,6 +9,7 @@ import (
 	"synthezia/internal/database"
 	"synthezia/internal/models"
 	"synthezia/internal/transcription"
+	"synthezia/pkg/logger"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -220,7 +221,7 @@ func (h *Handler) FinalizeLiveSession(c *gin.Context) {
 		}
 		execution.CalculateProcessingDuration()
 		if err := database.DB.Create(execution).Error; err != nil {
-			// Log error but don't fail request
+			logger.Warn("Failed to create execution record for fast finalized job", "job_id", jobID, "error", err)
 		}
 
 	} else {
