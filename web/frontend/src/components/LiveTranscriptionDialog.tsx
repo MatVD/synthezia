@@ -34,6 +34,7 @@ export function LiveTranscriptionDialog({ isOpen, onClose, onSessionComplete }: 
   const [streamError, setStreamError] = useState<string | null>(null);
   const [finalJobId, setFinalJobId] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<'finalize' | 'cancel' | null>(null);
+  const [fastFinalizeEnabled, setFastFinalizeEnabled] = useState(true);
 
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -139,6 +140,19 @@ export function LiveTranscriptionDialog({ isOpen, onClose, onSessionComplete }: 
   useEffect(() => {
     if (!isOpen) {
       cleanup();
+    } else {
+      // Fetch user settings when dialog opens
+      apiClient('/api/v1/user/settings')
+        .then(res => {
+          if (res.ok) return res.json();
+          throw new Error('Failed to fetch settings');
+        })
+        .then(data => {
+          if (data.fast_finalize_enabled !== undefined) {
+            setFastFinalizeEnabled(data.fast_finalize_enabled);
+          }
+        })
+        .catch(err => console.error('Failed to fetch user settings', err));
     }
   }, [isOpen, cleanup]);
 
@@ -379,7 +393,8 @@ export function LiveTranscriptionDialog({ isOpen, onClose, onSessionComplete }: 
     await uploadPromiseRef.current;
     
     try {
-      const response = await apiClient(`/api/v1/transcription/live/sessions/${session.id}/finalize`, {
+      const queryParams = fastFinalizeEnabled ? '?skip_reprocessing=true' : '';
+      const response = await apiClient(`/api/v1/transcription/live/sessions/${session.id}/finalize${queryParams}`, {
         method: 'POST',
       });
       if (!response.ok) {
@@ -555,8 +570,9 @@ export function LiveTranscriptionDialog({ isOpen, onClose, onSessionComplete }: 
           )} */}
 
           {/* Recording Controls */}
-          <div className="flex justify-center gap-4">
-            {!hasSession && (
+          <div className="flex flex-col items-center gap-4">
+            <div className="flex justify-center gap-4">
+              {!hasSession && (
               <Button
                 onClick={startSession}
                 disabled={isStarting}
@@ -637,6 +653,7 @@ export function LiveTranscriptionDialog({ isOpen, onClose, onSessionComplete }: 
                 Session {session?.status}
               </div>
             )}
+          </div>
           </div>
         </div>
       </DialogContent>

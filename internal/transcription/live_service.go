@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -301,6 +302,65 @@ func (s *LiveTranscriptionService) FinalizeSession(ctx context.Context, sessionI
 	s.EmitStatus(&session)
 
 	return &LiveFinalizeResult{Session: &session, MergedAudio: mergedPath}, nil
+}
+
+// CompileFullTranscript aggregates all chunk transcripts into a single result.
+func (s *LiveTranscriptionService) CompileFullTranscript(ctx context.Context, sessionID string) (*interfaces.TranscriptResult, error) {
+	var chunks []models.LiveTranscriptionChunk
+	if err := database.DB.WithContext(ctx).Where("session_id = ?", sessionID).Order("sequence ASC").Find(&chunks).Error; err != nil {
+		return nil, err
+	}
+
+	fullResult := &interfaces.TranscriptResult{
+		Metadata: make(map[string]string),
+		Segments: make([]interfaces.TranscriptSegment, 0),
+	}
+	var allText strings.Builder
+
+	for _, chunk := range chunks {
+		if chunk.TranscriptJSON == nil {
+			continue
+		}
+
+		var chunkResult interfaces.TranscriptResult
+		if err := json.Unmarshal([]byte(*chunk.TranscriptJSON), &chunkResult); err != nil {
+			logger.Warn("Failed to unmarshal chunk transcript", "chunk_id", chunk.ID, "error", err)
+			continue
+		}
+
+		// Merge Text
+		if allText.Len() > 0 {
+			allText.WriteString(" ")
+		}
+		allText.WriteString(chunkResult.Text)
+
+		// Merge Segments
+		for _, seg := range chunkResult.Segments {
+			seg.Start += chunk.StartOffset
+			seg.End += chunk.StartOffset
+			fullResult.Segments = append(fullResult.Segments, seg)
+		}
+
+		// Merge Words
+		for _, word := range chunkResult.WordSegments {
+			word.Start += chunk.StartOffset
+			word.End += chunk.StartOffset
+			fullResult.WordSegments = append(fullResult.WordSegments, word)
+		}
+
+		// Keep last language/model info
+		if chunkResult.Language != "" {
+			fullResult.Language = chunkResult.Language
+		}
+		if chunkResult.ModelUsed != "" {
+			fullResult.ModelUsed = chunkResult.ModelUsed
+		}
+	}
+
+	fullResult.Text = allText.String()
+	fullResult.Metadata["source"] = "live_compilation"
+
+	return fullResult, nil
 }
 
 // CancelSession marks a live session as cancelled and notifies listeners.

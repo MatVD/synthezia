@@ -138,6 +138,7 @@ type User struct {
 	Password                 string    `json:"-" gorm:"not null;type:varchar(255)"`
 	DefaultProfileID         *string   `json:"default_profile_id,omitempty" gorm:"type:varchar(36)"`
 	AutoTranscriptionEnabled bool      `json:"auto_transcription_enabled" gorm:"not null;default:false"`
+	FastFinalizeEnabled      bool      `json:"fast_finalize_enabled" gorm:"not null;default:true"`
 	CreatedAt                time.Time `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt                time.Time `json:"updated_at" gorm:"autoUpdateTime"`
 }

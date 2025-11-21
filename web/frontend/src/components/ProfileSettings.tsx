@@ -21,6 +21,7 @@ interface TranscriptionProfile {
 
 interface UserSettings {
 	auto_transcription_enabled: boolean;
+	fast_finalize_enabled: boolean;
 	default_profile_id?: string;
 }
 
@@ -144,6 +145,33 @@ export function ProfileSettings() {
 		}
 	};
 
+	// Handle fast finalize toggle
+	const handleFastFinalizeToggle = async (enabled: boolean) => {
+		setError("");
+		setSuccess("");
+		
+		try {
+			const response = await apiClient("/api/v1/user/settings", {
+				method: "PUT",
+				body: JSON.stringify({
+					fast_finalize_enabled: enabled,
+				}),
+			});
+
+			if (response.ok) {
+				const updatedSettings = await response.json();
+				setUserSettings(updatedSettings);
+				setSuccess(`Fast Finalize ${enabled ? "enabled" : "disabled"} successfully!`);
+			} else {
+				const errorData = await response.json();
+				setError(errorData.error || "Failed to update setting");
+			}
+		} catch (error) {
+			console.error("Error updating fast finalize setting:", error);
+			setError("Network error. Please try again.");
+		}
+	};
+
 	const handleCreateProfile = useCallback(() => {
 		setEditingProfile(null);
 		setProfileDialogOpen(true);
@@ -253,6 +281,43 @@ export function ProfileSettings() {
 							id="auto-transcription"
 							checked={userSettings?.auto_transcription_enabled || false}
 							onCheckedChange={handleAutoTranscriptionToggle}
+							disabled={settingsLoading}
+						/>
+					</div>
+				)}
+			</div>
+
+			{/* Fast Finalize Settings */}
+			<div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4 sm:p-6">
+				<div className="mb-4">
+					<div className="flex items-center space-x-2 mb-2">
+						<Settings className="h-5 w-5 text-green-600 dark:text-green-400" />
+						<h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">Live Transcription</h3>
+					</div>
+					<p className="text-sm text-gray-600 dark:text-gray-400">
+						Configure behavior for live transcription sessions.
+					</p>
+				</div>
+				
+				{settingsLoading ? (
+					<div className="flex items-center space-x-2 py-4">
+						<div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+						<span className="text-sm text-gray-600 dark:text-gray-400">Loading settings...</span>
+					</div>
+				) : (
+					<div className="flex items-center justify-between py-2">
+						<div>
+							<Label htmlFor="fast-finalize" className="text-gray-700 dark:text-gray-300 font-medium">
+								Fast Finalize
+							</Label>
+							<p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+								When enabled, live sessions are finalized instantly using the live transcript chunks, skipping a full re-processing step.
+							</p>
+						</div>
+						<Switch
+							id="fast-finalize"
+							checked={userSettings?.fast_finalize_enabled ?? true}
+							onCheckedChange={handleFastFinalizeToggle}
 							disabled={settingsLoading}
 						/>
 					</div>

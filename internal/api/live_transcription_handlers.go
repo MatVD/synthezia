@@ -163,6 +163,8 @@ func (h *Handler) StreamLiveSession(c *gin.Context) {
 // FinalizeLiveSession closes the live session, merges audio, and enqueues a traditional job.
 func (h *Handler) FinalizeLiveSession(c *gin.Context) {
 	sessionID := c.Param("session_id")
+	skipReprocessing := c.Query("skip_reprocessing") == "true"
+
 	finalizeResult, err := h.liveTranscription.FinalizeSession(c.Request.Context(), sessionID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -182,14 +184,55 @@ func (h *Handler) FinalizeLiveSession(c *gin.Context) {
 		job.Title = title
 	}
 
-	if err := database.DB.Create(job).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create final job"})
-		return
-	}
+	if skipReprocessing {
+		// Compile transcript from chunks
+		transcript, err := h.liveTranscription.CompileFullTranscript(c.Request.Context(), sessionID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to compile transcript: " + err.Error()})
+			return
+		}
 
-	if err := h.taskQueue.EnqueueJob(jobID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to enqueue job"})
-		return
+		// Serialize transcript to JSON
+		transcriptJSON, err := json.Marshal(transcript)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to serialize transcript: " + err.Error()})
+			return
+		}
+		transcriptStr := string(transcriptJSON)
+
+		job.Status = models.StatusCompleted
+		job.Transcript = &transcriptStr
+
+		// Create job with completed status
+		if err := database.DB.Create(job).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create final job"})
+			return
+		}
+
+		// Create execution record for consistency
+		now := time.Now()
+		execution := &models.TranscriptionJobExecution{
+			TranscriptionJobID: jobID,
+			StartedAt:          now,
+			CompletedAt:        &now,
+			Status:             models.StatusCompleted,
+			ActualParameters:   session.Parameters,
+		}
+		execution.CalculateProcessingDuration()
+		if err := database.DB.Create(execution).Error; err != nil {
+			// Log error but don't fail request
+		}
+
+	} else {
+		if err := database.DB.Create(job).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create final job"})
+			return
+		}
+
+		if err := h.taskQueue.EnqueueJob(jobID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to enqueue job"})
+			return
+		}
 	}
 
 	now := time.Now()

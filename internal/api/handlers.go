@@ -2928,12 +2928,14 @@ func (h *Handler) SetUserDefaultProfile(c *gin.Context) {
 // UserSettingsResponse represents the user's settings
 type UserSettingsResponse struct {
 	AutoTranscriptionEnabled bool    `json:"auto_transcription_enabled"`
+	FastFinalizeEnabled      bool    `json:"fast_finalize_enabled"`
 	DefaultProfileID         *string `json:"default_profile_id,omitempty"`
 }
 
 // UpdateUserSettingsRequest represents the request to update user settings
 type UpdateUserSettingsRequest struct {
 	AutoTranscriptionEnabled *bool `json:"auto_transcription_enabled,omitempty"`
+	FastFinalizeEnabled      *bool `json:"fast_finalize_enabled,omitempty"`
 }
 
 // @Summary Get user settings
@@ -2960,6 +2962,7 @@ func (h *Handler) GetUserSettings(c *gin.Context) {
 
 	response := UserSettingsResponse{
 		AutoTranscriptionEnabled: user.AutoTranscriptionEnabled,
+		FastFinalizeEnabled:      user.FastFinalizeEnabled,
 		DefaultProfileID:         user.DefaultProfileID,
 	}
 
@@ -3001,6 +3004,9 @@ func (h *Handler) UpdateUserSettings(c *gin.Context) {
 	if req.AutoTranscriptionEnabled != nil {
 		user.AutoTranscriptionEnabled = *req.AutoTranscriptionEnabled
 	}
+	if req.FastFinalizeEnabled != nil {
+		user.FastFinalizeEnabled = *req.FastFinalizeEnabled
+	}
 
 	// Save updated user
 	if err := database.DB.Save(&user).Error; err != nil {
@@ -3010,6 +3016,7 @@ func (h *Handler) UpdateUserSettings(c *gin.Context) {
 
 	response := UserSettingsResponse{
 		AutoTranscriptionEnabled: user.AutoTranscriptionEnabled,
+		FastFinalizeEnabled:      user.FastFinalizeEnabled,
 		DefaultProfileID:         user.DefaultProfileID,
 	}
 
