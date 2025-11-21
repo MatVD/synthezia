@@ -186,7 +186,7 @@ export function LiveTranscriptionDialog({ isOpen, onClose, onSessionComplete }: 
             title: 'Chunk upload failed',
             description: 'A live chunk failed to upload. Trying to continue.',
           });
-          return new Response(null, { status: 500 });
+          // Return undefined to match the success case
         })
         .then(() => undefined);
 
