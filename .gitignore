@@ -50,3 +50,6 @@ debug_parsing.go
 synthezia
 synthezia-optimized
 tests/database_test.db-shm
+.idea
+.idea/
+/.idea
